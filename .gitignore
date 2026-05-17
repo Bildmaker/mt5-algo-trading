@@ -1,0 +1,26 @@
+# Windows / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
+
+# Local runtimes
+.venv/
+node_modules/
+
+# MetaTrader generated artifacts
+*.ex5
+*.log
+*.tmp
+*.bak
+MQL5/Logs/
+MQL5/Profiles/
+MQL5/Tester/
+tester/
+logs/
+
+# Project exports that can become large
+*.gif
+*.mp4
+*.zip
+
