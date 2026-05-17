@@ -28,6 +28,7 @@ input int    InpBrokerUtcOffsetSummer      = 2;
 input group "Entry Rules"
 input bool   InpEnableLongTrades           = true;
 input bool   InpEnableShortTrades          = true;
+input bool   InpEnableVolumeFilter         = true;
 input double InpVolumeMultiplier           = 1.50;
 input int    InpVolumeAveragePeriod        = 20;
 input bool   InpRequireCloseBeyondRange    = true;
@@ -257,12 +258,16 @@ void EvaluateEntrySignal()
    if(signalBar.time < g_orEndTime || signalBar.time >= g_tradeCutoffTime)
       return;
 
-   const double averageVolume = GetAverageTickVolume(rates, 2, InpVolumeAveragePeriod);
-   if(averageVolume <= 0.0)
-      return;
+   double averageVolume = 0.0;
+   if(InpEnableVolumeFilter)
+   {
+      averageVolume = GetAverageTickVolume(rates, 2, InpVolumeAveragePeriod);
+      if(averageVolume <= 0.0)
+         return;
 
-   if((double)signalBar.tick_volume < averageVolume * InpVolumeMultiplier)
-      return;
+      if((double)signalBar.tick_volume < averageVolume * InpVolumeMultiplier)
+         return;
+   }
 
    bool longSignal = signalBar.high > g_orHigh;
    bool shortSignal = signalBar.low < g_orLow;
