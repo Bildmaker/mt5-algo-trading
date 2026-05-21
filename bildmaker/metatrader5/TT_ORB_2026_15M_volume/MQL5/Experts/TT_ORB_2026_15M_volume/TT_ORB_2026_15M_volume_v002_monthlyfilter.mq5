@@ -3,15 +3,15 @@
 //| 15-minute Opening Range Breakout for USTec / Nasdaq100 CFD      |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "0.2.0"
-#property description "Opening Range Breakout EA with monthly direction filters, volume filter, virtual same-bar hold, ATR break-even and lot sizing modes."
+#property version   "0.1.0"
+#property description "Opening Range Breakout EA with volume filter, virtual same-bar hold, ATR break-even and lot sizing modes."
 
 #include <Trade/Trade.mqh>
 
 input group "General"
 input bool   InpTradingEnabled             = true;
-input ulong  InpMagicNumber                = 202615002;
-input string InpTradeComment               = "TT_ORB_2026_15M_volume_v002_monthlyfilter";
+input ulong  InpMagicNumber                = 202615001;
+input string InpTradeComment               = "TT_ORB_2026_15M_volume_v001";
 input int    InpMaxTradesPerDay            = 1;
 input bool   InpVerboseLogging             = false;
 
@@ -109,7 +109,7 @@ int OnInit()
    RefreshSessionState();
    DrawSessionRectangles();
 
-   Print("TT_ORB_2026_15M_volume_v002_monthlyfilter initialisiert fuer ", _Symbol,
+   Print("TT_ORB_2026_15M_volume_v001 initialisiert fuer ", _Symbol,
          ". Session basiert auf New-York-Zeit mit US-DST. Broker UTC Winter=",
          InpBrokerUtcOffsetWinter,
          " Sommer=",
@@ -128,7 +128,7 @@ void OnDeinit(const int reason)
    if(g_atrHandle != INVALID_HANDLE)
       IndicatorRelease(g_atrHandle);
 
-   Print("TT_ORB_2026_15M_volume_v002_monthlyfilter beendet. Reason=", reason);
+   Print("TT_ORB_2026_15M_volume_v001 beendet. Reason=", reason);
 }
 
 void OnTick()
@@ -312,15 +312,17 @@ void EvaluateEntrySignal()
    if(!InpEnableShortTrades)
       shortSignal = false;
 
-   if(longSignal && !IsMonthAllowedForOrderType(ORDER_TYPE_BUY, signalBar.time))
+   if(longSignal && !IsLongMonthEnabled(GetNyMonth(signalBar.time)))
    {
-      LogVerbose("Long-Signal durch Monatsfilter blockiert.");
+      if(InpVerboseLogging)
+         Print("Long-Signal durch Monatsfilter blockiert.");
       longSignal = false;
    }
 
-   if(shortSignal && !IsMonthAllowedForOrderType(ORDER_TYPE_SELL, signalBar.time))
+   if(shortSignal && !IsShortMonthEnabled(GetNyMonth(signalBar.time)))
    {
-      LogVerbose("Short-Signal durch Monatsfilter blockiert.");
+      if(InpVerboseLogging)
+         Print("Short-Signal durch Monatsfilter blockiert.");
       shortSignal = false;
    }
 
@@ -747,8 +749,8 @@ int LastWeekdayOfMonth(const int year,
 {
    MqlDateTime lastDay;
    ZeroMemory(lastDay);
-   lastDay.year = (month == 12) ? (year + 1) : year;
-   lastDay.mon = (month == 12) ? 1 : (month + 1);
+   lastDay.year = year;
+   lastDay.mon = month + 1;
    lastDay.day = 1;
 
    datetime firstNextMonth = StructToTime(lastDay);
@@ -824,17 +826,6 @@ bool CanPlaceProtectiveStopsNow(const ENUM_POSITION_TYPE positionType,
    return true;
 }
 
-bool IsMonthAllowedForOrderType(const ENUM_ORDER_TYPE orderType,
-                                const datetime serverTime)
-{
-   const int month = GetNyMonth(serverTime);
-
-   if(orderType == ORDER_TYPE_BUY)
-      return IsLongMonthEnabled(month);
-
-   return IsShortMonthEnabled(month);
-}
-
 bool IsLongMonthEnabled(const int month)
 {
    switch(month)
@@ -875,10 +866,4 @@ bool IsShortMonthEnabled(const int month)
    }
 
    return false;
-}
-
-void LogVerbose(const string text)
-{
-   if(InpVerboseLogging)
-      Print(text);
 }
