@@ -4,7 +4,7 @@
 // | Aggregates configurable M5 bars into the opening range           |
 // +------------------------------------------------------------------+
 #property strict
-#property version   "6.003"
+#property version   "6.004"
 #property description "M5-compatible Opening Range Breakout EA with configurable M5 opening range aggregation, volume filter, daily ATR volatility filter, virtual same-bar hold, ATR break-even and lot sizing modes."
 
 #include <Trade/Trade.mqh>
@@ -301,12 +301,19 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
             return;
 
       const ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+      const ulong positionId = (ulong)HistoryDealGetInteger(trans.deal, DEAL_POSITION_ID);
 
       if(dealEntry == DEAL_ENTRY_IN)
+      {
             g_hasManagedPosition = true;
+            StorePositionOpeningRange(positionId, g_orHigh, g_orLow, g_orBarTime);
+      }
 
       if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_INOUT)
+      {
             g_hasManagedPosition = HasManagedPosition();
+            DeletePositionOpeningRange(positionId);
+      }
 
       if(!ShouldDrawChartObjects() || !InpDrawTradeMarkers)
             return;
@@ -739,6 +746,7 @@ void ManageOpenPosition()
       const datetime entryTime      = (datetime)PositionGetInteger(POSITION_TIME);
       const datetime entryBarTime   = GetBarOpenTime(entryTime);
       const datetime currentBarTime = iTime(_Symbol, SIGNAL_TF, 0);
+      const ulong    positionId     = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
 
       // Keep the original same-bar hold behavior:
       // no real SL/TP is placed until the next M5 bar after entry.
@@ -758,15 +766,30 @@ void ManageOpenPosition()
                         TimeToString(entryTime, TIME_DATE | TIME_MINUTES),
                         " bei NY-Zeit ",
                         TimeToString(ServerToNewYorkTime(currentBarTime), TIME_DATE | TIME_MINUTES));
+                  DeletePositionOpeningRange(positionId);
                   g_hasManagedPosition = false;
             }
             return;
       }
 
-      if(!HasValidOpeningRange())
+      double positionOrHigh = 0.0;
+      double positionOrLow  = 0.0;
+      datetime positionOrBarTime = 0;
+      if(!GetPositionOpeningRange(positionId, positionOrHigh, positionOrLow, positionOrBarTime))
+      {
+            if(!HasValidOpeningRange())
+                  return;
+
+            positionOrHigh = g_orHigh;
+            positionOrLow  = g_orLow;
+            positionOrBarTime = g_orBarTime;
+            StorePositionOpeningRange(positionId, positionOrHigh, positionOrLow, positionOrBarTime);
+      }
+
+      if(positionOrHigh <= positionOrLow)
             return;
 
-      const double initialSl = NormalizePrice((positionType == POSITION_TYPE_BUY) ? g_orLow : g_orHigh);
+      const double initialSl = NormalizePrice((positionType == POSITION_TYPE_BUY) ? positionOrLow : positionOrHigh);
       if(!IsValidRiskDistance(entryPrice, initialSl))
             return;
 
@@ -834,7 +857,10 @@ void ManageOpenPosition()
                               " Beschreibung=", trade.ResultRetcodeDescription());
             }
             else
+            {
+                  DeletePositionOpeningRange(positionId);
                   g_hasManagedPosition = false;
+            }
             return;
       }
 
@@ -846,7 +872,10 @@ void ManageOpenPosition()
                               " Beschreibung=", trade.ResultRetcodeDescription());
             }
             else
+            {
+                  DeletePositionOpeningRange(positionId);
                   g_hasManagedPosition = false;
+            }
             return;
       }
 
@@ -1019,6 +1048,71 @@ double GetTakeProfitForPosition(const ENUM_POSITION_TYPE positionType,
             return entryPrice + (riskDistance * InpTakeProfitRMultiple);
 
       return entryPrice - (riskDistance * InpTakeProfitRMultiple);
+}
+
+string PositionStateKey(const ulong positionId,
+                        const string field)
+{
+      return "TTORB6." +
+             IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN)) + "." +
+             IntegerToString((long)InpMagicNumber) + "." +
+             IntegerToString((long)positionId) + "." +
+             field;
+}
+
+void StorePositionOpeningRange(const ulong positionId,
+                               const double openingRangeHigh,
+                               const double openingRangeLow,
+                               const datetime openingRangeBarTime)
+{
+      if(positionId == 0 || openingRangeHigh <= openingRangeLow)
+            return;
+
+      GlobalVariableSet(PositionStateKey(positionId, "ORH"), openingRangeHigh);
+      GlobalVariableSet(PositionStateKey(positionId, "ORL"), openingRangeLow);
+      GlobalVariableSet(PositionStateKey(positionId, "ORT"), (double)openingRangeBarTime);
+}
+
+bool GetPositionOpeningRange(const ulong positionId,
+                             double &openingRangeHigh,
+                             double &openingRangeLow,
+                             datetime &openingRangeBarTime)
+{
+      openingRangeHigh = 0.0;
+      openingRangeLow = 0.0;
+      openingRangeBarTime = 0;
+
+      if(positionId == 0)
+            return false;
+
+      const string highKey = PositionStateKey(positionId, "ORH");
+      const string lowKey  = PositionStateKey(positionId, "ORL");
+      const string timeKey = PositionStateKey(positionId, "ORT");
+
+      if(!GlobalVariableCheck(highKey) ||
+         !GlobalVariableCheck(lowKey) ||
+         !GlobalVariableCheck(timeKey))
+            return false;
+
+      openingRangeHigh    = GlobalVariableGet(highKey);
+      openingRangeLow     = GlobalVariableGet(lowKey);
+      openingRangeBarTime = (datetime)GlobalVariableGet(timeKey);
+
+      return (openingRangeHigh > openingRangeLow);
+}
+
+void DeletePositionOpeningRange(const ulong positionId)
+{
+      if(positionId == 0)
+            return;
+
+      const string highKey = PositionStateKey(positionId, "ORH");
+      const string lowKey  = PositionStateKey(positionId, "ORL");
+      const string timeKey = PositionStateKey(positionId, "ORT");
+
+      if(GlobalVariableCheck(highKey)) GlobalVariableDel(highKey);
+      if(GlobalVariableCheck(lowKey))  GlobalVariableDel(lowKey);
+      if(GlobalVariableCheck(timeKey)) GlobalVariableDel(timeKey);
 }
 
 bool SelectManagedPosition()

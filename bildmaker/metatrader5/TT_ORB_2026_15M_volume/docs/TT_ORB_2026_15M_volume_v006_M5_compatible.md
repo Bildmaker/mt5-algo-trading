@@ -74,6 +74,8 @@ Alle Session-Zeiten sind New-York-Zeit:
 
 Wichtig: `InpNoEntryTradeAfterHour/Minute` begrenzt nur neue Entry-Signale. Offene Positionen werden danach weiter ueber SL/TP, Break-even, EOD-Close und die vorhandenen Schutzmechanismen verwaltet.
 
+Bei Positionen, die ohne EOD-Close ueber den New-York-Tageswechsel laufen, speichert der EA die Opening Range des Einstiegstags positionsbezogen. Dadurch werden SL/TP nicht durch die Opening Range des Folgetags neu berechnet.
+
 ## Broker-Zeit und DST
 
 Der EA rechnet Broker-Serverzeit in New-York-Zeit um. Dafuer gibt es folgende Inputs:
@@ -225,6 +227,7 @@ v006 vermeidet unnoetige Berechnungen:
 - Session-Rechtecke werden pro Tag nur einmal gezeichnet.
 - Im nicht-visuellen Strategy Tester werden Chartobjekte und Trade-Marker uebersprungen.
 - Im visuellen Strategy Tester werden Trade-Marker aus der Tester-History nachsynchronisiert, damit Entry-/Exit-Pfeile sichtbar bleiben.
+- Fuer offene Positionen wird die Entry-Opening-Range gespeichert; mehrtaegige Trades werden nicht mehr durch die Opening Range eines Folgetags verwaltet.
 
 Offene Positionen bleiben die Ausnahme: solange eine passende Position offen ist, wird sie weiter verwaltet.
 
