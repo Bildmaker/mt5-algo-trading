@@ -2,6 +2,11 @@
 
 MetaTrader-5 Expert Advisor fuer eine 15-Minuten-Opening-Range-Breakout-Idee mit Volumenfilter.
 
+## Aktuelle Version
+
+- `v006_M5_compatible`: M5-kompatible Variante, die die Opening Range aus einer konfigurierbaren Anzahl geschlossener M5-Kerzen ab 09:30 New-York-Zeit aggregiert.
+- Ausfuehrliche Dokumentation: [TT_ORB_2026_15M_volume_v006_M5_compatible](docs/TT_ORB_2026_15M_volume_v006_M5_compatible.md)
+
 ## Ziel
 
 Der EA soll schrittweise entwickelt und versioniert werden. Der erste Stand enthaelt nur das technische Grundgeruest:
@@ -34,4 +39,3 @@ TT_ORB_2026_15M_volume/
 3. Volumenfilter definieren: Tick-Volume, Durchschnitt, Mindestmultiplikator.
 4. Backtest-Protokoll standardisieren.
 5. EA in kleinen Git-Commits implementieren.
-
