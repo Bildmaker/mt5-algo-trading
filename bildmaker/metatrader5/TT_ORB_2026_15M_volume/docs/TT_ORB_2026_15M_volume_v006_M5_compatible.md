@@ -222,6 +222,7 @@ v006 vermeidet unnoetige Berechnungen:
 - Im Strategy Tester wird die Tagestrade-Anzahl intern gezaehlt; `HistorySelect()` wird dort nicht fuer jeden Tag benoetigt.
 - Session-Rechtecke werden pro Tag nur einmal gezeichnet.
 - Im nicht-visuellen Strategy Tester werden Chartobjekte und Trade-Marker uebersprungen.
+- Im visuellen Strategy Tester werden Trade-Marker aus der Tester-History nachsynchronisiert, damit Entry-/Exit-Pfeile sichtbar bleiben.
 
 Offene Positionen bleiben die Ausnahme: solange eine passende Position offen ist, wird sie weiter verwaltet.
 

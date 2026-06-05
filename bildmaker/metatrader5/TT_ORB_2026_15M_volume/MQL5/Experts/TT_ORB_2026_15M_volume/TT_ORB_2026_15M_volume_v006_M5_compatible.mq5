@@ -4,7 +4,7 @@
 // | Aggregates configurable M5 bars into the opening range           |
 // +------------------------------------------------------------------+
 #property strict
-#property version   "6.001"
+#property version   "6.002"
 #property description "M5-compatible Opening Range Breakout EA with configurable M5 opening range aggregation, volume filter, daily ATR volatility filter, virtual same-bar hold, ATR break-even and lot sizing modes."
 
 #include <Trade/Trade.mqh>
@@ -122,6 +122,7 @@ bool         g_sessionRectanglesDrawn        = false;
 bool         g_openingRangeLoadAttempted     = false;
 bool         g_hasManagedPosition            = false;
 datetime     g_noEntryChecksUntil            = 0;
+datetime     g_lastTradeMarkerSyncTo         = 0;
 
 int OnInit()
 {
@@ -210,6 +211,8 @@ void OnTick()
             return;
 
       g_lastProcessedBar = currentBarTime;
+
+      SyncVisualTradeMarkers(currentBarTime);
 
       if(!g_hasManagedPosition && g_noEntryChecksUntil > 0)
       {
@@ -560,6 +563,43 @@ void DrawTradeDealMarker(const ulong dealTicket, const string label)
       ObjectSetInteger(0, textName, OBJPROP_HIDDEN, false);
 
       ChartRedraw(0);
+}
+
+void SyncVisualTradeMarkers(const datetime currentBarTime)
+{
+      if(!MQLInfoInteger(MQL_TESTER) || !MQLInfoInteger(MQL_VISUAL_MODE) || !InpDrawTradeMarkers)
+            return;
+
+      const datetime fromTime = (g_lastTradeMarkerSyncTo > 0)
+                                ? g_lastTradeMarkerSyncTo - 60
+                                : currentBarTime - (2 * 24 * 60 * 60);
+      const datetime toTime = currentBarTime + SIGNAL_TF_SECONDS;
+
+      if(!HistorySelect(fromTime, toTime))
+            return;
+
+      const int deals = HistoryDealsTotal();
+      for(int i = 0; i < deals; ++i)
+      {
+            const ulong dealTicket = HistoryDealGetTicket(i);
+            if(dealTicket == 0)
+                  continue;
+
+            if(HistoryDealGetString(dealTicket, DEAL_SYMBOL) != _Symbol)
+                  continue;
+
+            if((ulong)HistoryDealGetInteger(dealTicket, DEAL_MAGIC) != InpMagicNumber)
+                  continue;
+
+            const ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(dealTicket, DEAL_ENTRY);
+            if(dealEntry == DEAL_ENTRY_IN)
+                  DrawTradeDealMarker(dealTicket, "ENTRY");
+
+            if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_INOUT)
+                  DrawTradeDealMarker(dealTicket, "EXIT");
+      }
+
+      g_lastTradeMarkerSyncTo = toTime;
 }
 
 bool ShouldDrawChartObjects()
