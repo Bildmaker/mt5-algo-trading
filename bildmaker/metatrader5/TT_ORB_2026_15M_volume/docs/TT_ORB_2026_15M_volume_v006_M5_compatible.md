@@ -69,8 +69,10 @@ Alle Session-Zeiten sind New-York-Zeit:
 | `InpOpeningRangeM5Bars` | Anzahl geschlossener M5-Kerzen fuer die Opening Range |
 | `InpNoEntryTradeAfterHour` | Stunde, nach der keine neuen Entries mehr gesucht werden |
 | `InpNoEntryTradeAfterMinute` | Minute, nach der keine neuen Entries mehr gesucht werden |
+| `InpExitTradeEODAfterHour` | Stunde, ab der offene EA-Positionen per EOD-Regel geschlossen werden |
+| `InpExitTradeEODAfterMinute` | Minute, ab der offene EA-Positionen per EOD-Regel geschlossen werden |
 
-Wichtig: `InpNoEntryTradeAfterHour/Minute` begrenzt nur neue Entry-Signale. Offene Positionen werden danach weiter ueber SL/TP, Break-even und die vorhandenen Schutzmechanismen verwaltet.
+Wichtig: `InpNoEntryTradeAfterHour/Minute` begrenzt nur neue Entry-Signale. Offene Positionen werden danach weiter ueber SL/TP, Break-even, EOD-Close und die vorhandenen Schutzmechanismen verwaltet.
 
 ## Broker-Zeit und DST
 
@@ -238,6 +240,8 @@ Offene Positionen bleiben die Ausnahme: solange eine passende Position offen ist
 | Session | `InpOpeningRangeM5Bars` | `3` | 3 M5-Kerzen = 15 Minuten |
 | Session | `InpNoEntryTradeAfterHour` | `11` | keine neuen Entries danach |
 | Session | `InpNoEntryTradeAfterMinute` | `30` | keine neuen Entries danach |
+| Exit Rules EOD | `InpExitTradeEODAfterHour` | `15` | EOD-Close ab dieser NY-Stunde |
+| Exit Rules EOD | `InpExitTradeEODAfterMinute` | `55` | EOD-Close ab dieser NY-Minute |
 | Entry | `InpRequireCloseBeyondRange` | `true` | Close muss jenseits der OR liegen |
 | Risk | `InpRiskPercent` | `2.50` | nur bei dynamischer Lotgroesse |
 | Risk | `InpTakeProfitRMultiple` | `1.30` | TP auf R-Basis |
@@ -325,7 +329,7 @@ InpNoEntryTradeAfterMinute
 Bedeutung:
 
 - Nach dieser Uhrzeit werden keine neuen Entry-Signale mehr gesucht.
-- Eine bereits offene Position wird weiter verwaltet.
+- Eine bereits offene Position wird weiter verwaltet und ab `InpExitTradeEODAfterHour/Minute` geschlossen.
 - Wenn keine Position offen ist und fuer den Tag kein Entry mehr moeglich ist, beendet der EA weitere Entry-Pruefungen fuer diesen Tag.
 
 ## Bekannte Grenzen

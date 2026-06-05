@@ -4,7 +4,7 @@
 // | Aggregates configurable M5 bars into the opening range           |
 // +------------------------------------------------------------------+
 #property strict
-#property version   "6.002"
+#property version   "6.003"
 #property description "M5-compatible Opening Range Breakout EA with configurable M5 opening range aggregation, volume filter, daily ATR volatility filter, virtual same-bar hold, ATR break-even and lot sizing modes."
 
 #include <Trade/Trade.mqh>
@@ -32,6 +32,10 @@ input int      InpNoEntryTradeAfterMinute               = 30;
 input bool     InpBrokerUsesEuropeanDst                 = true;
 input int      InpBrokerUtcOffsetWinter                 = 1;
 input int      InpBrokerUtcOffsetSummer                 = 2;
+
+input group "Exit Rules EOD (New York Time)"
+input int      InpExitTradeEODAfterHour                 = 15;
+input int      InpExitTradeEODAfterMinute               = 55;
 
 input group "Entry Rules"
 input bool     InpEnableLongTrades                      = true;
@@ -741,6 +745,24 @@ void ManageOpenPosition()
       if(entryBarTime == 0 || currentBarTime <= entryBarTime)
             return;
 
+      if(ShouldClosePositionAtEod(entryTime, currentBarTime))
+      {
+            if(!trade.PositionClose(_Symbol))
+            {
+                  Print("EOD Exit fehlgeschlagen. Retcode=", trade.ResultRetcode(),
+                              " Beschreibung=", trade.ResultRetcodeDescription());
+            }
+            else
+            {
+                  Print("EOD Exit ausgefuehrt fuer Position seit ",
+                        TimeToString(entryTime, TIME_DATE | TIME_MINUTES),
+                        " bei NY-Zeit ",
+                        TimeToString(ServerToNewYorkTime(currentBarTime), TIME_DATE | TIME_MINUTES));
+                  g_hasManagedPosition = false;
+            }
+            return;
+      }
+
       if(!HasValidOpeningRange())
             return;
 
@@ -1091,6 +1113,11 @@ int NoEntryCutoffMinutes()
       return (InpNoEntryTradeAfterHour * 60) + InpNoEntryTradeAfterMinute;
 }
 
+int EodExitMinutes()
+{
+      return (InpExitTradeEODAfterHour * 60) + InpExitTradeEODAfterMinute;
+}
+
 int MinutesFromDayStart(const MqlDateTime &timeInfo)
 {
       return (timeInfo.hour * 60) + timeInfo.min;
@@ -1120,6 +1147,25 @@ bool IsAfterNoEntryCutoff(const datetime serverBarTime)
       TimeToStruct(ServerToNewYorkTime(serverBarTime), nyTime);
 
       return (MinutesFromDayStart(nyTime) > NoEntryCutoffMinutes());
+}
+
+bool ShouldClosePositionAtEod(const datetime entryTime,
+                              const datetime currentBarTime)
+{
+      MqlDateTime entryNyTime;
+      TimeToStruct(ServerToNewYorkTime(entryTime), entryNyTime);
+
+      MqlDateTime currentNyTime;
+      TimeToStruct(ServerToNewYorkTime(currentBarTime), currentNyTime);
+
+      const int entryNyDayKey   = NyDayKeyFromStruct(entryNyTime);
+      const int currentNyDayKey = NyDayKeyFromStruct(currentNyTime);
+
+      if(currentNyDayKey > entryNyDayKey)
+            return true;
+
+      return (currentNyDayKey == entryNyDayKey &&
+              MinutesFromDayStart(currentNyTime) >= EodExitMinutes());
 }
 
 datetime GetNextOpeningRangeEndServerTime(const MqlDateTime &currentNyTime)
