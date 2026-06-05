@@ -69,12 +69,13 @@ Alle Session-Zeiten sind New-York-Zeit:
 | `InpOpeningRangeM5Bars` | Anzahl geschlossener M5-Kerzen fuer die Opening Range |
 | `InpNoEntryTradeAfterHour` | Stunde, nach der keine neuen Entries mehr gesucht werden |
 | `InpNoEntryTradeAfterMinute` | Minute, nach der keine neuen Entries mehr gesucht werden |
+| `InpExitTradeEOD` | aktiviert/deaktiviert die EOD-Schliessung offener EA-Positionen |
 | `InpExitTradeEODAfterHour` | Stunde, ab der offene EA-Positionen per EOD-Regel geschlossen werden |
 | `InpExitTradeEODAfterMinute` | Minute, ab der offene EA-Positionen per EOD-Regel geschlossen werden |
 
 Wichtig: `InpNoEntryTradeAfterHour/Minute` begrenzt nur neue Entry-Signale. Offene Positionen werden danach weiter ueber SL/TP, Break-even, EOD-Close und die vorhandenen Schutzmechanismen verwaltet.
 
-Bei Positionen, die ohne EOD-Close ueber den New-York-Tageswechsel laufen, speichert der EA die Opening Range des Einstiegstags positionsbezogen. Dadurch werden SL/TP nicht durch die Opening Range des Folgetags neu berechnet.
+Bei Positionen, die mit `InpExitTradeEOD=false` ueber den New-York-Tageswechsel laufen, speichert der EA die Opening Range des Einstiegstags positionsbezogen. Dadurch werden SL/TP nicht durch die Opening Range des Folgetags neu berechnet.
 
 ## Broker-Zeit und DST
 
@@ -243,6 +244,7 @@ Offene Positionen bleiben die Ausnahme: solange eine passende Position offen ist
 | Session | `InpOpeningRangeM5Bars` | `3` | 3 M5-Kerzen = 15 Minuten |
 | Session | `InpNoEntryTradeAfterHour` | `11` | keine neuen Entries danach |
 | Session | `InpNoEntryTradeAfterMinute` | `30` | keine neuen Entries danach |
+| Exit Rules EOD | `InpExitTradeEOD` | `true` | EOD-Close aktivieren/deaktivieren |
 | Exit Rules EOD | `InpExitTradeEODAfterHour` | `15` | EOD-Close ab dieser NY-Stunde |
 | Exit Rules EOD | `InpExitTradeEODAfterMinute` | `55` | EOD-Close ab dieser NY-Minute |
 | Entry | `InpRequireCloseBeyondRange` | `true` | Close muss jenseits der OR liegen |
@@ -332,7 +334,7 @@ InpNoEntryTradeAfterMinute
 Bedeutung:
 
 - Nach dieser Uhrzeit werden keine neuen Entry-Signale mehr gesucht.
-- Eine bereits offene Position wird weiter verwaltet und ab `InpExitTradeEODAfterHour/Minute` geschlossen.
+- Eine bereits offene Position wird weiter verwaltet und bei `InpExitTradeEOD=true` ab `InpExitTradeEODAfterHour/Minute` geschlossen.
 - Wenn keine Position offen ist und fuer den Tag kein Entry mehr moeglich ist, beendet der EA weitere Entry-Pruefungen fuer diesen Tag.
 
 ## Bekannte Grenzen

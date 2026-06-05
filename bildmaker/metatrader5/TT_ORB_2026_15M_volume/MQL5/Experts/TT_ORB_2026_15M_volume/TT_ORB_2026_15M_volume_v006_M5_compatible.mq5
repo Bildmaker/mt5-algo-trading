@@ -4,7 +4,7 @@
 // | Aggregates configurable M5 bars into the opening range           |
 // +------------------------------------------------------------------+
 #property strict
-#property version   "6.004"
+#property version   "6.005"
 #property description "M5-compatible Opening Range Breakout EA with configurable M5 opening range aggregation, volume filter, daily ATR volatility filter, virtual same-bar hold, ATR break-even and lot sizing modes."
 
 #include <Trade/Trade.mqh>
@@ -34,6 +34,7 @@ input int      InpBrokerUtcOffsetWinter                 = 1;
 input int      InpBrokerUtcOffsetSummer                 = 2;
 
 input group "Exit Rules EOD (New York Time)"
+input bool     InpExitTradeEOD                          = true;
 input int      InpExitTradeEODAfterHour                 = 15;
 input int      InpExitTradeEODAfterMinute               = 55;
 
@@ -1246,6 +1247,9 @@ bool IsAfterNoEntryCutoff(const datetime serverBarTime)
 bool ShouldClosePositionAtEod(const datetime entryTime,
                               const datetime currentBarTime)
 {
+      if(!InpExitTradeEOD)
+            return false;
+
       MqlDateTime entryNyTime;
       TimeToStruct(ServerToNewYorkTime(entryTime), entryNyTime);
 
