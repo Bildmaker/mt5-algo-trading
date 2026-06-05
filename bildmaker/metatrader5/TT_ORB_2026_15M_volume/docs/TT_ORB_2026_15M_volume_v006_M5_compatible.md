@@ -215,10 +215,13 @@ v006 vermeidet unnoetige Berechnungen:
 
 - `OnTick()` verarbeitet nur neue M5-Kerzen.
 - Wenn der aktuelle M5-Bar bereits verarbeitet wurde, wird sofort beendet.
+- Die Opening-Range-History wird erst nach OR-Ende und nur einmal pro NY-Tag geladen.
 - Nach `InpNoEntryTradeAfterHour/Minute` werden keine Entry-Checks mehr gemacht.
+- Wenn ein Tag ohne offene EA-Position erledigt ist, springt der EA bis zum naechsten Opening-Range-Ende in einen schnellen Sleep-Pfad.
 - Wenn `InpMaxTradesPerDay` erreicht ist und keine Position offen ist, werden Entry-Checks fuer den Tag beendet.
-- Trade-History wird nicht tickweise neu gezaehlt, sondern nur fuer den aktuellen NY-Tag gecacht.
+- Im Strategy Tester wird die Tagestrade-Anzahl intern gezaehlt; `HistorySelect()` wird dort nicht fuer jeden Tag benoetigt.
 - Session-Rechtecke werden pro Tag nur einmal gezeichnet.
+- Im nicht-visuellen Strategy Tester werden Chartobjekte und Trade-Marker uebersprungen.
 
 Offene Positionen bleiben die Ausnahme: solange eine passende Position offen ist, wird sie weiter verwaltet.
 

@@ -4,7 +4,7 @@
 // | Aggregates configurable M5 bars into the opening range           |
 // +------------------------------------------------------------------+
 #property strict
-#property version   "6.000"
+#property version   "6.001"
 #property description "M5-compatible Opening Range Breakout EA with configurable M5 opening range aggregation, volume filter, daily ATR volatility filter, virtual same-bar hold, ATR break-even and lot sizing modes."
 
 #include <Trade/Trade.mqh>
@@ -119,6 +119,9 @@ int          g_dailyVolaAtrHandle           = INVALID_HANDLE;
 bool         g_tradingDisabledLogged        = false;
 bool         g_entryChecksDoneForDay         = false;
 bool         g_sessionRectanglesDrawn        = false;
+bool         g_openingRangeLoadAttempted     = false;
+bool         g_hasManagedPosition            = false;
+datetime     g_noEntryChecksUntil            = 0;
 
 int OnInit()
 {
@@ -160,8 +163,12 @@ int OnInit()
             }
       }
 
-      RefreshSessionState();
-      DrawSessionRectangles();
+      g_hasManagedPosition = HasManagedPosition();
+      if(!MQLInfoInteger(MQL_TESTER))
+      {
+            RefreshSessionState(TimeTradeServer());
+            DrawSessionRectangles();
+      }
 
       Print("TT_ORB_2026_15M_volume_v006_M5_compatible initialisiert fuer ", _Symbol,
                   ". Session basiert auf New-York-Zeit mit US-DST. Broker UTC Winter=",
@@ -204,13 +211,26 @@ void OnTick()
 
       g_lastProcessedBar = currentBarTime;
 
-      const int currentNyDayKey = GetNyDayKey(currentBarTime);
-      if(g_entryChecksDoneForDay && currentNyDayKey == g_orDayKey && !HasManagedPosition())
+      if(!g_hasManagedPosition && g_noEntryChecksUntil > 0)
+      {
+            if(currentBarTime < g_noEntryChecksUntil)
+                  return;
+
+            g_noEntryChecksUntil = 0;
+      }
+
+      MqlDateTime currentNyTime;
+      TimeToStruct(ServerToNewYorkTime(currentBarTime), currentNyTime);
+
+      const int currentNyDayKey   = NyDayKeyFromStruct(currentNyTime);
+      const int currentNyMinutes  = MinutesFromDayStart(currentNyTime);
+
+      if(g_entryChecksDoneForDay && currentNyDayKey == g_orDayKey && !g_hasManagedPosition)
             return;
 
-      RefreshSessionState();
+      RefreshSessionState(currentBarTime, currentNyDayKey, currentNyMinutes);
 
-      if(HasManagedPosition())
+      if(g_hasManagedPosition)
       {
             ManageOpenPosition();
             return;
@@ -229,18 +249,16 @@ void OnTick()
             return;
       }
 
-      DrawSessionRectangles();
-
       if(!HasValidOpeningRange())
       {
-            if(IsAfterNoEntryCutoff(currentBarTime))
-                  g_entryChecksDoneForDay = true;
+            if(currentNyMinutes > NoEntryCutoffMinutes())
+                  MarkEntryChecksDoneForDay(currentNyTime);
             return;
       }
 
       if(g_tradesToday >= InpMaxTradesPerDay)
       {
-            g_entryChecksDoneForDay = true;
+            MarkEntryChecksDoneForDay(currentNyTime);
             return;
       }
 
@@ -249,23 +267,20 @@ void OnTick()
 
       if(currentBarTime > g_entryCutoffTime)
       {
-            g_entryChecksDoneForDay = true;
+            MarkEntryChecksDoneForDay(currentNyTime);
             return;
       }
 
       EvaluateEntrySignal();
 
-      if(currentBarTime >= g_entryCutoffTime && !HasManagedPosition())
-            g_entryChecksDoneForDay = true;
+      if(currentBarTime >= g_entryCutoffTime && !g_hasManagedPosition)
+            MarkEntryChecksDoneForDay(currentNyTime);
 }
 
 void OnTradeTransaction(const MqlTradeTransaction &trans,
                         const MqlTradeRequest &request,
                         const MqlTradeResult &result)
 {
-      if(!InpDrawTradeMarkers)
-            return;
-
       if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
             return;
 
@@ -281,33 +296,87 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       const ENUM_DEAL_ENTRY dealEntry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
 
       if(dealEntry == DEAL_ENTRY_IN)
+            g_hasManagedPosition = true;
+
+      if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_INOUT)
+            g_hasManagedPosition = HasManagedPosition();
+
+      if(!ShouldDrawChartObjects() || !InpDrawTradeMarkers)
+            return;
+
+      if(dealEntry == DEAL_ENTRY_IN)
             DrawTradeDealMarker(trans.deal, "ENTRY");
 
       if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_INOUT)
             DrawTradeDealMarker(trans.deal, "EXIT");
 }
 
-void RefreshSessionState()
+void RefreshSessionState(const datetime currentBarTime)
 {
-      const datetime serverNow    = TimeTradeServer();
-      const int      todayNyKey   = GetNyDayKey(serverNow);
+      MqlDateTime currentNyTime;
+      TimeToStruct(ServerToNewYorkTime(currentBarTime), currentNyTime);
+
+      RefreshSessionState(currentBarTime,
+                          NyDayKeyFromStruct(currentNyTime),
+                          MinutesFromDayStart(currentNyTime));
+}
+
+void RefreshSessionState(const datetime currentBarTime,
+                         const int currentNyDayKey,
+                         const int currentNyMinutes)
+{
+      const int todayNyKey = currentNyDayKey;
 
       if(todayNyKey != g_orDayKey)
       {
-            g_tradesToday         = CountTradesForNyDay(todayNyKey);
+            g_tradesToday         = CountTradesForNyDay(todayNyKey, currentBarTime);
             g_tradesCountedDayKey = todayNyKey;
-            LoadTodayOpeningRange(todayNyKey);
+            ResetOpeningRangeForDay(todayNyKey);
+            TryLoadTodayOpeningRange(todayNyKey, currentNyMinutes);
             return;
       }
 
       if(g_tradesCountedDayKey != todayNyKey)
       {
-            g_tradesToday         = CountTradesForNyDay(todayNyKey);
+            g_tradesToday         = CountTradesForNyDay(todayNyKey, currentBarTime);
             g_tradesCountedDayKey = todayNyKey;
       }
 
       if(!HasValidOpeningRange())
-            LoadTodayOpeningRange(todayNyKey);
+            TryLoadTodayOpeningRange(todayNyKey, currentNyMinutes);
+}
+
+void ResetOpeningRangeForDay(const int targetNyDayKey)
+{
+      g_orHigh                   = 0.0;
+      g_orLow                    = 0.0;
+      g_orBarTime                = 0;
+      g_orEndTime                = 0;
+      g_entryCutoffTime          = 0;
+      g_orDayKey                 = targetNyDayKey;
+      g_entryChecksDoneForDay    = false;
+      g_sessionRectanglesDrawn   = false;
+      g_openingRangeLoadAttempted = false;
+      g_noEntryChecksUntil       = 0;
+}
+
+void MarkEntryChecksDoneForDay(const MqlDateTime &currentNyTime)
+{
+      g_entryChecksDoneForDay = true;
+      g_noEntryChecksUntil    = GetNextOpeningRangeEndServerTime(currentNyTime);
+}
+
+void TryLoadTodayOpeningRange(const int targetNyDayKey,
+                              const int currentNyMinutes)
+{
+      if(g_openingRangeLoadAttempted)
+            return;
+
+      if(currentNyMinutes < OpeningRangeEndMinutes())
+            return;
+
+      g_openingRangeLoadAttempted = true;
+      LoadTodayOpeningRange(targetNyDayKey);
 }
 
 void LoadTodayOpeningRange(const int targetNyDayKey)
@@ -317,7 +386,10 @@ void LoadTodayOpeningRange(const int targetNyDayKey)
 
       const int copied = CopyRates(_Symbol, SIGNAL_TF, 0, 400, rates);
       if(copied <= 0)
+      {
+            g_openingRangeLoadAttempted = false;
             return;
+      }
 
       g_orHigh            = 0.0;
       g_orLow             = 0.0;
@@ -397,6 +469,9 @@ void LoadTodayOpeningRange(const int targetNyDayKey)
 
 void DrawSessionRectangles()
 {
+      if(!ShouldDrawChartObjects())
+            return;
+
       if(!HasValidOpeningRange())
             return;
 
@@ -449,6 +524,9 @@ void DrawRectangle(const string   name,
 
 void DrawTradeDealMarker(const ulong dealTicket, const string label)
 {
+      if(!ShouldDrawChartObjects())
+            return;
+
       const datetime dealTime  = (datetime)HistoryDealGetInteger(dealTicket, DEAL_TIME);
       const double   dealPrice = HistoryDealGetDouble(dealTicket, DEAL_PRICE);
       const double   volume    = HistoryDealGetDouble(dealTicket, DEAL_VOLUME);
@@ -482,6 +560,14 @@ void DrawTradeDealMarker(const ulong dealTicket, const string label)
       ObjectSetInteger(0, textName, OBJPROP_HIDDEN, false);
 
       ChartRedraw(0);
+}
+
+bool ShouldDrawChartObjects()
+{
+      if(MQLInfoInteger(MQL_TESTER) && !MQLInfoInteger(MQL_VISUAL_MODE))
+            return false;
+
+      return true;
 }
 
 void EvaluateEntrySignal()
@@ -587,6 +673,7 @@ void EvaluateEntrySignal()
       }
 
       ++g_tradesToday;
+      g_hasManagedPosition = true;
       Print("Trade eroeffnet: ", EnumToString(orderType),
                   " Vol=",     DoubleToString(volume, 2),
                   " OR High=", DoubleToString(g_orHigh, _Digits),
@@ -596,7 +683,10 @@ void EvaluateEntrySignal()
 void ManageOpenPosition()
 {
       if(!SelectManagedPosition())
+      {
+            g_hasManagedPosition = false;
             return;
+      }
 
       const ENUM_POSITION_TYPE positionType =
             (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
@@ -681,6 +771,8 @@ void ManageOpenPosition()
                   Print("Konservativer virtueller Exit fehlgeschlagen. Retcode=", trade.ResultRetcode(),
                               " Beschreibung=", trade.ResultRetcodeDescription());
             }
+            else
+                  g_hasManagedPosition = false;
             return;
       }
 
@@ -691,6 +783,8 @@ void ManageOpenPosition()
                   Print("Virtueller Exit fehlgeschlagen. Retcode=", trade.ResultRetcode(),
                               " Beschreibung=", trade.ResultRetcodeDescription());
             }
+            else
+                  g_hasManagedPosition = false;
             return;
       }
 
@@ -899,10 +993,14 @@ datetime GetBarOpenTime(const datetime moment)
       return iTime(_Symbol, SIGNAL_TF, shift);
 }
 
-int CountTradesForNyDay(const int nyDayKey)
+int CountTradesForNyDay(const int nyDayKey,
+                        const datetime currentBarTime)
 {
-      const datetime fromTime = TimeTradeServer() - (10 * 24 * 60 * 60);
-      const datetime toTime   = TimeTradeServer();
+      if(MQLInfoInteger(MQL_TESTER))
+            return 0;
+
+      const datetime fromTime = currentBarTime - (10 * 24 * 60 * 60);
+      const datetime toTime   = currentBarTime;
 
       if(!HistorySelect(fromTime, toTime))
             return 0;
@@ -938,6 +1036,31 @@ int OpeningRangeM5Bars()
       return InpOpeningRangeM5Bars;
 }
 
+int OpeningRangeStartMinutes()
+{
+      return (InpOpeningRangeHour * 60) + InpOpeningRangeMinute;
+}
+
+int OpeningRangeEndMinutes()
+{
+      return OpeningRangeStartMinutes() + (OpeningRangeM5Bars() * 5);
+}
+
+int NoEntryCutoffMinutes()
+{
+      return (InpNoEntryTradeAfterHour * 60) + InpNoEntryTradeAfterMinute;
+}
+
+int MinutesFromDayStart(const MqlDateTime &timeInfo)
+{
+      return (timeInfo.hour * 60) + timeInfo.min;
+}
+
+int NyDayKeyFromStruct(const MqlDateTime &nyTime)
+{
+      return (nyTime.year * 10000) + (nyTime.mon * 100) + nyTime.day;
+}
+
 int OpeningRangeSeconds()
 {
       return OpeningRangeM5Bars() * SIGNAL_TF_SECONDS;
@@ -956,17 +1079,29 @@ bool IsAfterNoEntryCutoff(const datetime serverBarTime)
       MqlDateTime nyTime;
       TimeToStruct(ServerToNewYorkTime(serverBarTime), nyTime);
 
-      const int currentMinutes = (nyTime.hour * 60) + nyTime.min;
-      const int cutoffMinutes  = (InpNoEntryTradeAfterHour * 60) + InpNoEntryTradeAfterMinute;
+      return (MinutesFromDayStart(nyTime) > NoEntryCutoffMinutes());
+}
 
-      return (currentMinutes > cutoffMinutes);
+datetime GetNextOpeningRangeEndServerTime(const MqlDateTime &currentNyTime)
+{
+      MqlDateTime nextNyOpen = currentNyTime;
+      nextNyOpen.hour = InpOpeningRangeHour;
+      nextNyOpen.min  = InpOpeningRangeMinute;
+      nextNyOpen.sec  = 0;
+
+      datetime nextNyOpenLocal = StructToTime(nextNyOpen);
+      if(MinutesFromDayStart(currentNyTime) >= OpeningRangeEndMinutes())
+            nextNyOpenLocal += 24 * 60 * 60;
+
+      TimeToStruct(nextNyOpenLocal, nextNyOpen);
+      return NewYorkLocalToServerTime(nextNyOpen) + OpeningRangeSeconds();
 }
 
 int GetNyDayKey(const datetime serverTime)
 {
       MqlDateTime nyTime;
       TimeToStruct(ServerToNewYorkTime(serverTime), nyTime);
-      return (nyTime.year * 10000) + (nyTime.mon * 100) + nyTime.day;
+      return NyDayKeyFromStruct(nyTime);
 }
 
 datetime ServerToNewYorkTime(const datetime serverTime)
@@ -974,6 +1109,17 @@ datetime ServerToNewYorkTime(const datetime serverTime)
       const datetime utcTime           = ServerToUtcTime(serverTime);
       const int      nyUtcOffsetHours  = GetNewYorkUtcOffsetHours(utcTime);
       return utcTime + (nyUtcOffsetHours * 60 * 60);
+}
+
+datetime NewYorkLocalToServerTime(const MqlDateTime &nyLocalTime)
+{
+      const datetime nyLocalTimestamp = StructToTime(nyLocalTime);
+      const datetime utcGuess         = nyLocalTimestamp + (5 * 60 * 60);
+      const int      nyUtcOffsetHours = GetNewYorkUtcOffsetHours(utcGuess);
+      const datetime utcTime          = nyLocalTimestamp - (nyUtcOffsetHours * 60 * 60);
+      const int      brokerOffset     = GetBrokerUtcOffsetHoursFromUtc(utcTime);
+
+      return utcTime + (brokerOffset * 60 * 60);
 }
 
 datetime ServerToUtcTime(const datetime serverTime)
@@ -1016,6 +1162,18 @@ int GetBrokerUtcOffsetHours(const datetime serverTime)
             return InpBrokerUtcOffsetWinter;
 
       if(IsEuropeanDstActive(serverTime))
+            return InpBrokerUtcOffsetSummer;
+
+      return InpBrokerUtcOffsetWinter;
+}
+
+int GetBrokerUtcOffsetHoursFromUtc(const datetime utcTime)
+{
+      if(!InpBrokerUsesEuropeanDst)
+            return InpBrokerUtcOffsetWinter;
+
+      const datetime brokerSummerLocalTime = utcTime + (InpBrokerUtcOffsetSummer * 60 * 60);
+      if(IsEuropeanDstActive(brokerSummerLocalTime))
             return InpBrokerUtcOffsetSummer;
 
       return InpBrokerUtcOffsetWinter;
