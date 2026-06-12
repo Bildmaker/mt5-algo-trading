@@ -19,7 +19,7 @@ enum ENUM_DAILY_VOLATILITY_FILTER_MODE
 input group "General"
 input bool     InpTradingEnabled                        = true;
 input ulong    InpMagicNumber                           = 202615001;
-input string   InpTradeComment                          = "TT_ORB_2026_15M_volume_v005-02_conservatice_closure";
+input string   InpTradeComment                          = "TT_ORB_2026_15M_volume_v003_vola_tester";
 input int      InpMaxTradesPerDay                       = 1;
 input bool     InpVerboseLogging                        = false;
 
@@ -69,7 +69,6 @@ input color    InpTradeWindowColor                      = clrDarkSlateBlue;
 input bool     InpDrawRectanglesInBackground            = true;
 input int      InpRectangleLineWidth                    = 1;
 input bool     InpDrawTradeMarkers                      = true;
-input bool     InpShowChartComments                     = true;
 input color    InpEntryMarkerColor                      = clrLime;
 input color    InpExitMarkerColor                       = clrRed;
 
@@ -826,12 +825,6 @@ void MaybePrintDailyVolatilityNoTradeAtNine(const datetime currentBarTime)
 
 void UpdateChartComment()
 {
-      if(!InpShowChartComments)
-      {
-            Comment("");
-            return;
-      }
-
       Comment(BuildChartCommentText());
 }
 
